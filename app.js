@@ -265,6 +265,15 @@ function checkTextAsync(text) {
 // Handle results from the Web Worker
 function handleCheckResult(issues) {
   console.log('Received check result from worker:', issues.length, 'issues');
+  console.log('Detailed issues:', issues);
+  
+  // Debug: Check if suggestions are empty
+  issues.forEach((issue, index) => {
+    console.log(`Issue ${index + 1}: "${issue.word}" at position ${issue.start}-${issue.end}`);
+    console.log(`  Suggestions: [${issue.suggestions.join(', ')}]`);
+    console.log(`  Suggestions length: ${issue.suggestions.length}`);
+  });
+  
   displayResults(issues);
   updateBackdrop(issues);
   updateStats(issues);

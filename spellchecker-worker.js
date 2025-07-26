@@ -40,11 +40,25 @@ async function initDatabase(buffer, personalDictArray) {
   const SQL = await initSqlJs({ locateFile: file => file });
   db = new SQL.Database(new Uint8Array(buffer));
   
+  console.log('🔧 Database initialized, size:', buffer.byteLength, 'bytes');
+  
+  // Check if madde table exists and has data
+  try {
+    const tableCheck = db.prepare('SELECT COUNT(*) as count FROM madde');
+    tableCheck.step();
+    const count = tableCheck.getAsObject().count;
+    console.log(`📊 Madde table has ${count} entries`);
+    tableCheck.free();
+  } catch (error) {
+    console.error('❌ Error checking madde table:', error);
+  }
+  
   // Prepare statements for reuse
   validateStmt = db.prepare('SELECT 1 FROM madde WHERE lower(madde)=lower(?) OR lower(madde_duz)=lower(?) LIMIT 1');
   
   // 🚀 Create FTS5 virtual table for fast suggestion queries
   try {
+    console.log('🔧 Creating FTS5 virtual table...');
     db.exec(`
       CREATE VIRTUAL TABLE madde_fts USING fts5(
         madde,
@@ -54,6 +68,7 @@ async function initDatabase(buffer, personalDictArray) {
       );
     `);
     
+    console.log('📝 Populating FTS5 table...');
     // Populate FTS5 table with normalized content for better matching
     const populateStmt = db.prepare(`
       INSERT INTO madde_fts(madde, madde_normalized) 
@@ -61,6 +76,13 @@ async function initDatabase(buffer, personalDictArray) {
     `);
     populateStmt.run();
     populateStmt.free();
+    
+    // Check FTS5 table population
+    const ftsCheck = db.prepare('SELECT COUNT(*) as count FROM madde_fts');
+    ftsCheck.step();
+    const ftsCount = ftsCheck.getAsObject().count;
+    console.log(`📊 FTS5 table populated with ${ftsCount} entries`);
+    ftsCheck.free();
     
     // Use FTS5 for suggestions
     suggestionsStmt = db.prepare(`
@@ -71,15 +93,36 @@ async function initDatabase(buffer, personalDictArray) {
       LIMIT ?
     `);
     
-    console.log('FTS5 virtual table created successfully');
+    console.log('✅ FTS5 virtual table created successfully');
   } catch (error) {
-    console.warn('FTS5 not available, falling back to LIKE queries:', error);
+    console.warn('⚠️ FTS5 not available, falling back to LIKE queries:', error);
     // Fallback to original LIKE-based approach
     suggestionsStmt = db.prepare('SELECT madde FROM madde WHERE length(madde) BETWEEN ? AND ? AND lower(madde) LIKE ? LIMIT 300');
+    console.log('✅ Fallback LIKE statement prepared');
   }
    
   // Initialize personal dictionary
   personalDict = new Set(personalDictArray || []);
+  
+  // Test database functionality
+  console.log('🧪 Testing database functionality...');
+  try {
+    // Test validation
+    const testWord = 'merhaba';
+    const isValid = isWordValid(testWord);
+    console.log(`  Test word "${testWord}" is valid: ${isValid}`);
+    
+    // Test suggestions
+    const testSuggestions = getSuggestions('merhaba', 3);
+    console.log(`  Test suggestions for "merhaba": [${testSuggestions.join(', ')}]`);
+    
+    // Test with a misspelled word
+    const misspelledSuggestions = getSuggestions('meraba', 3);
+    console.log(`  Test suggestions for "meraba": [${misspelledSuggestions.join(', ')}]`);
+    
+  } catch (error) {
+    console.error('❌ Database test failed:', error);
+  }
 }
 
 function isWordValid(word) {
@@ -157,6 +200,8 @@ function keyboardAwareEditDistance(source, target) {
 function getSuggestions(word, limit = 5) {
   const suggestions = new Set();
   const wordLower = word.toLowerCase();
+  
+  console.log(`🔍 Getting suggestions for: "${word}" (lowercase: "${wordLower}")`);
 
   // 1. Enhanced quick wins: Turkish/ASCII swaps + adjacent key checks
   // 🔄 Bidirectional Turkish-ASCII character mappings
@@ -180,7 +225,9 @@ function getSuggestions(word, limit = 5) {
     if (alternatives) {
       // Handle single alternative
       const variant = wordLower.slice(0, i) + alternatives + wordLower.slice(i + 1);
+      console.log(`  🔄 Trying Turkish/ASCII variant: "${variant}"`);
       if (isWordValid(variant)) {
+        console.log(`  ✅ Found valid variant: "${variant}"`);
         suggestions.add(variant);
       }
     }
@@ -198,7 +245,9 @@ function getSuggestions(word, limit = 5) {
       
       for (const turkishChar of turkishVariants[char] || []) {
         const variant = wordLower.slice(0, i) + turkishChar + wordLower.slice(i + 1);
+        console.log(`  🔄 Trying Turkish variant: "${variant}"`);
         if (isWordValid(variant)) {
+          console.log(`  ✅ Found valid Turkish variant: "${variant}"`);
           suggestions.add(variant);
         }
       }
@@ -208,18 +257,26 @@ function getSuggestions(word, limit = 5) {
     const adjacentKeys = getAdjacentKeys(char);
     for (const adjKey of adjacentKeys) {
       const variant = wordLower.slice(0, i) + adjKey + wordLower.slice(i + 1);
+      console.log(`  🔄 Trying adjacent key variant: "${variant}"`);
       if (isWordValid(variant)) {
+        console.log(`  ✅ Found valid adjacent key variant: "${variant}"`);
         suggestions.add(variant);
       }
     }
   }
 
   if (suggestions.size >= limit) {
+    console.log(`  🎯 Quick wins found ${suggestions.size} suggestions, returning early`);
     return Array.from(suggestions).slice(0, limit);
   }
+  
+  console.log(`  📊 Quick wins found ${suggestions.size} suggestions, continuing with database search`);
 
   // 2. FTS5 search or fallback to LIKE queries
-  if (!suggestionsStmt) return Array.from(suggestions);
+  if (!suggestionsStmt) {
+    console.log(`  ❌ No suggestions statement available`);
+    return Array.from(suggestions);
+  }
   
   let candidates = [];
   
@@ -227,6 +284,9 @@ function getSuggestions(word, limit = 5) {
     // Try FTS5 search with normalized query for better Turkish matching
     const normalizedWord = normalizeTurkish(wordLower);
     const ftsQuery = `"${wordLower}"* OR ${wordLower}* OR "${normalizedWord}"* OR ${normalizedWord}*`;
+    console.log(`  🔍 FTS5 query: "${ftsQuery}"`);
+    console.log(`  🔍 Normalized word: "${normalizedWord}"`);
+    
     suggestionsStmt.bind([ftsQuery, limit * 10]); // Get more candidates for ranking
     
     while(suggestionsStmt.step()){
@@ -234,19 +294,23 @@ function getSuggestions(word, limit = 5) {
       candidates.push(row.madde);
     }
     suggestionsStmt.reset();
+    console.log(`  📊 FTS5 found ${candidates.length} candidates`);
   } catch (error) {
+    console.log(`  ⚠️ FTS5 failed, falling back to LIKE queries: ${error.message}`);
     // Fallback to LIKE queries if FTS5 fails
     const prefixLen = Math.min(word.length, 3);
     const likePattern = wordLower.substring(0, prefixLen) + '%';
     const minLen = Math.max(1, word.length - 2);
     const maxLen = word.length + 2;
 
+    console.log(`  🔍 LIKE pattern: "${likePattern}" (length: ${minLen}-${maxLen})`);
     suggestionsStmt.bind([minLen, maxLen, likePattern]);
     
     while(suggestionsStmt.step()){
       candidates.push(suggestionsStmt.getAsObject().madde);
     }
     suggestionsStmt.reset();
+    console.log(`  📊 LIKE query found ${candidates.length} candidates`);
   }
 
   // 3. Rank candidates using keyboard-aware edit distance
@@ -275,6 +339,8 @@ function getSuggestions(word, limit = 5) {
       .normalize('NFC');
   }
   
+  console.log(`  📊 Total candidates before ranking: ${candidates.length}`);
+  
   const normTarget = normalizeTurkish(wordLower);
   
   // Enhanced ranking: keyboard-aware edit distance + length similarity
@@ -296,12 +362,16 @@ function getSuggestions(word, limit = 5) {
     return a.localeCompare(b, 'tr');
   });
   
+  console.log(`  🏆 Top 5 ranked candidates:`, candidates.slice(0, 5));
+  
   for (const cand of candidates) {
     if (suggestions.size >= limit) break;
     suggestions.add(cand);
   }
   
-  return Array.from(suggestions);
+  const finalSuggestions = Array.from(suggestions);
+  console.log(`  🎯 Final suggestions for "${word}":`, finalSuggestions);
+  return finalSuggestions;
 }
 
 // Get keys adjacent to a given key on QWERTY layout
