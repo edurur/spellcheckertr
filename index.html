@@ -5,13 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🇹🇷 Türkçe İmla Denetleyicisi (Web)</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- sql.js (SQLite compiled to WebAssembly) -->
-  <script src="sql-wasm.js"></script>
 </head>
 <body>
   <div class="container">
     <h1>🇹🇷 Türkçe İmla Denetleyicisi (Web)</h1>
-    <p class="subtitle">S3 üzerinden indirilen TDK sözlüğü ile tamamen tarayıcı içinde çalışır.</p>
+    <p class="subtitle">Tamamen tarayıcı içinde, sade ve hızlı.</p>
 
     <div id="editor-container">
       <div id="editor-backdrop"></div>
@@ -23,17 +21,11 @@
       <span id="error-count">0 hata</span>
     </div>
     <div class="button-group">
-      <button id="downloadBtn" aria-label="Veritabanını İndir veya Güncelle">📥 Veritabanını İndir / Güncelle</button>
       <button id="checkBtn" disabled aria-label="Metni Denetle">Denetle</button>
       <button id="liveBtn" disabled aria-label="Canlı Modu Aç/Kapat">Canlı Mod (Kapalı)</button>
       <button id="themeToggle" aria-label="Tema Değiştir">🌙 Koyu Mod</button>
       <span id="status"></span>
-      <div id="progress-container" style="display: none;">
-        <div id="progress-bar">
-          <div id="progress-fill"></div>
-        </div>
-        <span id="progress-text">0%</span>
-      </div>
+      <button id="downloadBtn" style="display: none;"></button>
     </div>
 
     <div id="results" class="results-header"></div>

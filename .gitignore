@@ -1,0 +1,20 @@
+# Large dictionary file
+gts.json
+
+# Database files
+*.db
+*.sqlite3
+
+# Binary files
+*.wasm
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Node modules (if any)
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db 
