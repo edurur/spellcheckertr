@@ -96,7 +96,7 @@ async function saveBufferToCache(buf) {
 async function init(forceRefresh = false) {
   downloadBtn.disabled = true;
   status('📦 sql.js yükleniyor…');
-  const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
+  const SQL = await initSqlJs({ locateFile: file => file });
 
   let buf = null;
   if (!forceRefresh) {
