@@ -1,13 +1,76 @@
-// spellchecker-worker.js - Reads gts.json directly
+// spellchecker-worker.js - Fetches gts.json from remote with caching
 
 let dictionary = new Set();
 let personalDict = new Set();
 
+// --- Cache Management ---
+const CACHE_DB_NAME = 'SpellCheckerCache';
+const CACHE_STORE = 'dictionary';
+const CACHE_KEY = 'gts_dictionary';
+const CACHE_VERSION = 1;
+
+async function openCacheDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(CACHE_DB_NAME, CACHE_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(CACHE_STORE)) {
+        db.createObjectStore(CACHE_STORE);
+      }
+    };
+  });
+}
+
+async function getCachedDictionary() {
+  try {
+    const db = await openCacheDB();
+    const transaction = db.transaction([CACHE_STORE], 'readonly');
+    const store = transaction.objectStore(CACHE_STORE);
+    const request = store.get(CACHE_KEY);
+    
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (e) {
+    console.warn("Cache read failed:", e);
+    return null;
+  }
+}
+
+async function saveDictionaryToCache(dictionaryData) {
+  try {
+    const db = await openCacheDB();
+    const transaction = db.transaction([CACHE_STORE], 'readwrite');
+    const store = transaction.objectStore(CACHE_STORE);
+    store.put(dictionaryData, CACHE_KEY);
+  } catch (e) {
+    console.warn("Cache write failed:", e);
+  }
+}
+
 // --- Initialization ---
 async function initialize() {
   try {
-    console.log("Fetching dictionary from gts.json...");
-    const response = await fetch('gts.json');
+    // First try to load from cache
+    console.log("Checking cache for dictionary...");
+    const cached = await getCachedDictionary();
+    
+    if (cached) {
+      console.log("Loading dictionary from cache...");
+      dictionary = new Set(cached);
+      console.log(`Dictionary loaded from cache with ${dictionary.size} words.`);
+      self.postMessage({ type: 'DB_READY' });
+      return;
+    }
+    
+    // If not in cache, fetch from remote
+    console.log("Fetching dictionary from remote...");
+    const response = await fetch('https://p.001717.xyz/gts.json');
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -26,6 +89,10 @@ async function initialize() {
         }
       }
     }
+    
+    // Save to cache
+    console.log("Saving dictionary to cache...");
+    await saveDictionaryToCache(Array.from(dictionary));
     
     console.log(`Dictionary loaded with ${dictionary.size} words.`);
     self.postMessage({ type: 'DB_READY' });
