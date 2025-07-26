@@ -6,7 +6,7 @@ let suggestionsStmt = null;
 let personalDict = new Set();
 
 // Import sql.js in the worker
-importScripts('sql-wasm.js');
+importScripts('https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.44.2/dist/sql-wasm.js');
 
 self.onmessage = async function(e) {
   const { type, data } = e.data;
@@ -37,7 +37,7 @@ self.onmessage = async function(e) {
 };
 
 async function initDatabase(buffer, personalDictArray) {
-  const SQL = await initSqlJs({ locateFile: file => file });
+  const SQL = await initSqlJs({ locateFile: file => `https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.44.2/dist/${file}` });
   db = new SQL.Database(new Uint8Array(buffer));
   
   // Prepare statements for reuse

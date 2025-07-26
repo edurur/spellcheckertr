@@ -96,7 +96,7 @@ async function saveBufferToCache(buf) {
 async function init(forceRefresh = false) {
   downloadBtn.disabled = true;
   status('📦 sql.js yükleniyor…');
-  const SQL = await initSqlJs({ locateFile: file => file });
+  const SQL = await initSqlJs({ locateFile: file => `https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.44.2/dist/${file}` });
 
   let buf = null;
   if (!forceRefresh) {
