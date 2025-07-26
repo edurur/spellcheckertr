@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🇹🇷 Türkçe İmla Denetleyicisi (Web)</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- sql.js (SQLite compiled to WebAssembly) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>🇹🇷 Türkçe İmla Denetleyicisi (Web)</h1>
+    <p class="subtitle">S3 üzerinden indirilen TDK sözlüğü ile tamamen tarayıcı içinde çalışır.</p>
+
+    <div id="editor-container">
+      <div id="editor-backdrop"></div>
+      <textarea id="textInput" spellcheck="false" placeholder="Kontrol edilecek metni yazın…">Bu bir denme metndir. Meraba dünya!</textarea>
+    </div>
+    <div class="button-group">
+      <button id="downloadBtn">📥 Veritabanını İndir</button>
+      <button id="checkBtn" disabled>Denetle</button>
+      <button id="liveBtn" disabled>Canlı Mod (Kapalı)</button>
+      <span id="status"></span>
+    </div>
+
+    <div id="results" class="results-header">Önce veritabanını indirin.</div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html> 
