@@ -277,7 +277,34 @@ function displayResults(issues) {
     return;
   }
   console.log('Issues found:', issues);
-  resultsEl.innerHTML = `<div class="results-header">🚨 ${issues.length} hata bulundu</div>`;
+  
+  let html = `<div class="results-header">🚨 ${issues.length} hata bulundu</div>`;
+  
+  // Add detailed error list
+  html += '<div class="errors-list">';
+  issues.forEach((issue, index) => {
+    html += '<div class="error-item">';
+    html += `<div class="error-word">"${escapeHtml(issue.word)}"</div>`;
+    
+    if (issue.suggestions && issue.suggestions.length > 0) {
+      html += '<div class="suggestions-list">';
+      html += '<span class="suggestions-label">Öneriler:</span>';
+      issue.suggestions.forEach(suggestion => {
+        html += `<span class="suggestion" onclick="replaceWordAtIndex('${escapeHtml(suggestion)}', ${issue.start}, ${issue.end})">${escapeHtml(suggestion)}</span>`;
+      });
+      html += '</div>';
+    } else {
+      html += '<div class="no-suggestions">Öneri bulunamadı</div>';
+    }
+    
+    html += `<div class="error-actions">`;
+    html += `<span class="add-dict" onclick="addToPersonalDict('${escapeHtml(issue.word)}')">Sözlüğe ekle</span>`;
+    html += '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  
+  resultsEl.innerHTML = html;
 }
 
 window.replaceWordAtIndex = function(newWord, start, end) {

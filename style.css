@@ -102,6 +102,21 @@ textarea{
     gap: 4px;
     text-align: center;
   }
+  
+  .error-item {
+    padding: 0.75rem;
+  }
+  
+  .suggestion {
+    display: block;
+    margin: 2px 0;
+    text-align: center;
+  }
+  
+  .suggestions-label {
+    display: block;
+    margin-bottom: 0.25rem;
+  }
 }
 
 .button-group{
@@ -111,8 +126,85 @@ textarea{
 button{background:var(--primary);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:16px;cursor:pointer}
 button:disabled{background:#aaa}
 .results-header{background:var(--accent);margin-top:1rem;padding:1rem;border-radius:6px;font-size:14px;color:#333}
-.error-word{color:var(--primary);font-weight:bold}
-.suggestion{display:inline-block;margin:3px 3px;padding:4px 8px;background:var(--accent);border-radius:4px;cursor:pointer}
+
+/* Error list styles */
+.errors-list {
+  margin-top: 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.error-item {
+  padding: 1rem;
+  border-bottom: 1px solid var(--accent);
+  background: var(--card-bg);
+  transition: background-color 0.2s ease;
+}
+
+.error-item:last-child {
+  border-bottom: none;
+}
+
+.error-item:hover {
+  background: var(--accent);
+}
+
+.error-word {
+  color: var(--primary);
+  font-weight: bold;
+  font-size: 16px;
+  margin-bottom: 0.5rem;
+}
+
+.suggestions-list {
+  margin: 0.5rem 0;
+}
+
+.suggestions-label {
+  color: #666;
+  font-size: 14px;
+  margin-right: 0.5rem;
+}
+
+.suggestion {
+  display: inline-block;
+  margin: 3px 3px;
+  padding: 4px 8px;
+  background: var(--accent);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-size: 14px;
+}
+
+.suggestion:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.no-suggestions {
+  color: #888;
+  font-style: italic;
+  font-size: 14px;
+  margin: 0.5rem 0;
+}
+
+.error-actions {
+  margin-top: 0.5rem;
+}
+
+.error-actions .add-dict {
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.error-actions .add-dict:hover {
+  color: #a01830;
+}
 
 /* Popup for suggestions */
 #suggestion-popup {
@@ -130,6 +222,15 @@ button:disabled{background:#aaa}
 #suggestion-popup .suggestion {
   display: block; /* each on its own line */
   margin: 2px 0;
+  background: var(--accent);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+#suggestion-popup .suggestion:hover {
+  background: var(--primary);
+  color: white;
 }
 
 #suggestion-popup .no-suggestion {
