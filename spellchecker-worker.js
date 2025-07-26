@@ -49,12 +49,46 @@ async function initDatabase(buffer, personalDictArray) {
     const count = tableCheck.getAsObject().count;
     console.log(`📊 Madde table has ${count} entries`);
     tableCheck.free();
+    
+    // Test what columns exist
+    const schemaCheck = db.prepare("PRAGMA table_info(madde)");
+    console.log('📋 Madde table schema:');
+    while (schemaCheck.step()) {
+      const column = schemaCheck.getAsObject();
+      console.log(`  - ${column.name}: ${column.type}`);
+    }
+    schemaCheck.free();
+    
+    // Test some sample words
+    const sampleCheck = db.prepare('SELECT madde FROM madde LIMIT 10');
+    console.log('📝 Sample words from database:');
+    while (sampleCheck.step()) {
+      const word = sampleCheck.getAsObject().madde;
+      console.log(`  - "${word}"`);
+    }
+    sampleCheck.free();
+    
   } catch (error) {
     console.error('❌ Error checking madde table:', error);
   }
   
-  // Prepare statements for reuse
-  validateStmt = db.prepare('SELECT 1 FROM madde WHERE lower(madde)=lower(?) OR lower(madde_duz)=lower(?) LIMIT 1');
+  // Prepare statements for reuse - try different column combinations
+  let validateQuery = 'SELECT 1 FROM madde WHERE lower(madde)=lower(?)';
+  
+  // Check if madde_duz column exists
+  try {
+    const testStmt = db.prepare('SELECT madde_duz FROM madde LIMIT 1');
+    testStmt.step();
+    testStmt.free();
+    validateQuery += ' OR lower(madde_duz)=lower(?)';
+    console.log('✅ madde_duz column found, using extended query');
+  } catch (error) {
+    console.log('ℹ️ madde_duz column not found, using simple query');
+  }
+  
+  validateQuery += ' LIMIT 1';
+  console.log(`📝 Validation query: ${validateQuery}`);
+  validateStmt = db.prepare(validateQuery);
   
   // Basit LIKE sorgusu için statement hazırla
   suggestionsStmt = db.prepare('SELECT madde FROM madde WHERE length(madde) BETWEEN ? AND ? AND lower(madde) LIKE ? LIMIT 300');
@@ -66,18 +100,33 @@ async function initDatabase(buffer, personalDictArray) {
   // Test database functionality
   console.log('🧪 Testing database functionality...');
   try {
-    // Test validation
-    const testWord = 'merhaba';
-    const isValid = isWordValid(testWord);
-    console.log(`  Test word "${testWord}" is valid: ${isValid}`);
+    // Test with known valid words
+    const validWords = ['merhaba', 'dünya', 'test', 'kelime'];
+    console.log('🔍 Testing known valid words:');
+    for (const word of validWords) {
+      const isValid = isWordValid(word);
+      console.log(`  "${word}": ${isValid ? '✅ Valid' : '❌ Invalid'}`);
+    }
     
-    // Test suggestions
-    const testSuggestions = getSuggestions('merhaba', 3);
-    console.log(`  Test suggestions for "merhaba": [${testSuggestions.join(', ')}]`);
+    // Test with problematic words from user
+    const problemWords = ['denme', 'metndir', 'meraba'];
+    console.log('🔍 Testing problematic words:');
+    for (const word of problemWords) {
+      const isValid = isWordValid(word);
+      console.log(`  "${word}": ${isValid ? '✅ Valid' : '❌ Invalid'}`);
+    }
     
-    // Test with a misspelled word
-    const misspelledSuggestions = getSuggestions('meraba', 3);
-    console.log(`  Test suggestions for "meraba": [${misspelledSuggestions.join(', ')}]`);
+    // Test manual database query
+    console.log('🔍 Manual database queries:');
+    const manualCheck = db.prepare('SELECT madde FROM madde WHERE lower(madde) = lower(?) LIMIT 1');
+    for (const word of ['denme', 'metndir', 'deneme', 'metin']) {
+      manualCheck.bind([word]);
+      const found = manualCheck.step();
+      const result = found ? manualCheck.getAsObject().madde : 'not found';
+      manualCheck.reset();
+      console.log(`  "${word}": ${result}`);
+    }
+    manualCheck.free();
     
   } catch (error) {
     console.error('❌ Database test failed:', error);
@@ -88,12 +137,26 @@ function isWordValid(word) {
   if (!validateStmt) return false;
   
   // Check personal dictionary first
-  if (personalDict.has(word.toLowerCase())) return true;
+  if (personalDict.has(word.toLowerCase())) {
+    console.log(`  ✅ "${word}" found in personal dictionary`);
+    return true;
+  }
   
-  validateStmt.bind([word, word]);
+  // Test the word
+  console.log(`  🔍 Checking if "${word}" is valid...`);
+  
+  // Determine parameter count based on the query
+  const paramCount = validateStmt.getSQL().split('?').length - 1;
+  if (paramCount === 2) {
+    validateStmt.bind([word, word]); // For queries with madde_duz
+  } else {
+    validateStmt.bind([word]); // For simple queries
+  }
+  
   const valid = validateStmt.step();
   validateStmt.reset();
   
+  console.log(`  ${valid ? '✅' : '❌'} "${word}" is ${valid ? 'valid' : 'invalid'}`);
   return valid;
 }
 
