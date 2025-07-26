@@ -17,15 +17,29 @@
       <div id="editor-backdrop"></div>
       <textarea id="textInput" spellcheck="false" placeholder="Kontrol edilecek metni yazın…">Bu bir denme metndir. Meraba dünya!</textarea>
     </div>
+    <div id="stats-container">
+      <span id="word-count">0 kelime</span>
+      <span id="char-count">0 karakter</span>
+      <span id="error-count">0 hata</span>
+    </div>
     <div class="button-group">
-      <button id="downloadBtn">📥 Veritabanını İndir</button>
-      <button id="checkBtn" disabled>Denetle</button>
-      <button id="liveBtn" disabled>Canlı Mod (Kapalı)</button>
+      <button id="downloadBtn" aria-label="Veritabanını İndir veya Güncelle">📥 Veritabanını İndir / Güncelle</button>
+      <button id="checkBtn" disabled aria-label="Metni Denetle">Denetle</button>
+      <button id="liveBtn" disabled aria-label="Canlı Modu Aç/Kapat">Canlı Mod (Kapalı)</button>
+      <button id="themeToggle" aria-label="Tema Değiştir">🌙 Koyu Mod</button>
       <span id="status"></span>
+      <div id="progress-container" style="display: none;">
+        <div id="progress-bar">
+          <div id="progress-fill"></div>
+        </div>
+        <span id="progress-text">0%</span>
+      </div>
     </div>
 
-    <div id="results" class="results-header">Önce veritabanını indirin.</div>
+    <div id="results" class="results-header"></div>
   </div>
+
+  <div id="suggestion-popup"></div>
 
   <script src="app.js"></script>
 </body>
