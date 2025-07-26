@@ -1,0 +1,79 @@
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  background:#f5f7fa;
+  margin:0;
+  padding:20px;
+}
+.container{
+  max-width:800px;
+  margin:0 auto;
+  background:#fff;
+  padding:2rem;
+  border-radius:10px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.05);
+}
+h1{text-align:center;color:#c41e3a;margin-top:0}
+.subtitle{text-align:center;color:#666;margin-bottom:1.5rem}
+textarea{
+  width:100%;
+  height:220px;
+  padding:12px;
+  font-size:16px;
+  resize:vertical;
+  box-sizing:border-box;
+  border:1px solid #ced4da;
+  border-radius:6px;
+}
+
+/* overlay for live highlighting */
+#editor-container{position:relative}
+#editor-backdrop, #textInput{
+  width:100%;
+  min-height:220px;
+  font-size:16px;
+  line-height:1.5;
+  font-family:inherit;
+  box-sizing:border-box;
+}
+
+#editor-backdrop{
+  position:absolute;
+  top:0;left:0;
+  white-space:pre-wrap;
+  word-wrap:break-word;
+  color:transparent;
+  pointer-events:none;
+}
+
+#editor-backdrop mark{
+  background:none;
+  text-decoration:wavy underline #c41e3a;
+  text-decoration-skip-ink:none;
+}
+
+#textInput{position:relative;background:transparent;color:#212529;}
+
+.button-group{
+  margin:1rem 0;
+  text-align:center;
+}
+button{
+  background:#c41e3a;
+  color:#fff;
+  border:none;
+  padding:10px 20px;
+  border-radius:6px;
+  font-size:16px;
+  cursor:pointer;
+}
+button:disabled{background:#aaa}
+.results-header{
+  margin-top:1rem;
+  padding:1rem;
+  background:#f8f9fa;
+  border-radius:6px;
+  font-size:14px;
+  color:#333;
+}
+.error-word{color:#c41e3a;font-weight:bold}
+.suggestion{display:inline-block;margin:3px 3px;padding:4px 8px;background:#e9ecef;border-radius:4px;cursor:pointer} 
