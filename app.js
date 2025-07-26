@@ -1,4 +1,4 @@
-const DB_URL = 'v12.gts.sqlite3.db'; // local file
+const DB_URL = 'https://github.com/edurur/spellcheckertr/raw/refs/heads/main/v12.gts.sqlite3.db'; // local file
 
 let db = null;
 const statusEl = document.getElementById('status');
