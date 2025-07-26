@@ -56,50 +56,9 @@ async function initDatabase(buffer, personalDictArray) {
   // Prepare statements for reuse
   validateStmt = db.prepare('SELECT 1 FROM madde WHERE lower(madde)=lower(?) OR lower(madde_duz)=lower(?) LIMIT 1');
   
-  // 🚀 Create FTS5 virtual table for fast suggestion queries
-  try {
-    console.log('🔧 Creating FTS5 virtual table...');
-    db.exec(`
-      CREATE VIRTUAL TABLE madde_fts USING fts5(
-        madde,
-        madde_normalized,
-        content='madde',
-        tokenize='unicode61'
-      );
-    `);
-    
-    console.log('📝 Populating FTS5 table...');
-    // Populate FTS5 table with normalized content for better matching
-    const populateStmt = db.prepare(`
-      INSERT INTO madde_fts(madde, madde_normalized) 
-      SELECT madde, lower(madde) FROM madde
-    `);
-    populateStmt.run();
-    populateStmt.free();
-    
-    // Check FTS5 table population
-    const ftsCheck = db.prepare('SELECT COUNT(*) as count FROM madde_fts');
-    ftsCheck.step();
-    const ftsCount = ftsCheck.getAsObject().count;
-    console.log(`📊 FTS5 table populated with ${ftsCount} entries`);
-    ftsCheck.free();
-    
-    // Use FTS5 for suggestions
-    suggestionsStmt = db.prepare(`
-      SELECT madde, rank 
-      FROM madde_fts 
-      WHERE madde_fts MATCH ? 
-      ORDER BY rank 
-      LIMIT ?
-    `);
-    
-    console.log('✅ FTS5 virtual table created successfully');
-  } catch (error) {
-    console.warn('⚠️ FTS5 not available, falling back to LIKE queries:', error);
-    // Fallback to original LIKE-based approach
-    suggestionsStmt = db.prepare('SELECT madde FROM madde WHERE length(madde) BETWEEN ? AND ? AND lower(madde) LIKE ? LIMIT 300');
-    console.log('✅ Fallback LIKE statement prepared');
-  }
+  // Basit LIKE sorgusu için statement hazırla
+  suggestionsStmt = db.prepare('SELECT madde FROM madde WHERE length(madde) BETWEEN ? AND ? AND lower(madde) LIKE ? LIMIT 300');
+  console.log('✅ Simple LIKE statement prepared');
    
   // Initialize personal dictionary
   personalDict = new Set(personalDictArray || []);
@@ -138,63 +97,33 @@ function isWordValid(word) {
   return valid;
 }
 
-// 🎯 QWERTY keyboard layout for distance-based typo correction
-const QWERTY_LAYOUT = {
-  'q': [0, 0], 'w': [1, 0], 'e': [2, 0], 'r': [3, 0], 't': [4, 0], 'y': [5, 0], 'u': [6, 0], 'i': [7, 0], 'o': [8, 0], 'p': [9, 0],
-  'a': [0, 1], 's': [1, 1], 'd': [2, 1], 'f': [3, 1], 'g': [4, 1], 'h': [5, 1], 'j': [6, 1], 'k': [7, 1], 'l': [8, 1],
-  'z': [0, 2], 'x': [1, 2], 'c': [2, 2], 'v': [3, 2], 'b': [4, 2], 'n': [5, 2], 'm': [6, 2],
-  // Turkish specific keys
-  'ğ': [9, 1], 'ü': [10, 1], 'ş': [9.5, 2], 'i': [7, 0], 'ı': [7.5, 0], 'ö': [8.5, 1], 'ç': [7.5, 2]
-};
-
-// Calculate physical distance between two keys on QWERTY keyboard
-function getKeyboardDistance(char1, char2) {
-  const pos1 = QWERTY_LAYOUT[char1.toLowerCase()];
-  const pos2 = QWERTY_LAYOUT[char2.toLowerCase()];
+// Basit edit distance hesaplama (Levenshtein distance)
+function simpleEditDistance(str1, str2) {
+  const matrix = [];
   
-  if (!pos1 || !pos2) return 3; // Default penalty for unknown characters
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
   
-  // Euclidean distance between key positions
-  const dx = pos1[0] - pos2[0];
-  const dy = pos1[1] - pos2[1];
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-// Enhanced edit distance that considers keyboard layout
-function keyboardAwareEditDistance(source, target) {
-  const m = source.length;
-  const n = target.length;
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
   
-  if (m === 0) return n;
-  if (n === 0) return m;
-  
-  // Create distance matrix
-  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
-  
-  // Initialize base cases
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-  
-  // Fill the matrix
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (source[i - 1] === target[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1]; // No cost for exact match
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
       } else {
-        // Calculate keyboard-aware substitution cost
-        const keyDist = getKeyboardDistance(source[i - 1], target[j - 1]);
-        const substitutionCost = 0.3 + (keyDist * 0.2); // Base cost + distance penalty
-        
-        dp[i][j] = Math.min(
-          dp[i - 1][j] + 1,         // Deletion
-          dp[i][j - 1] + 1,         // Insertion  
-          dp[i - 1][j - 1] + substitutionCost // Substitution with keyboard penalty
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
         );
       }
     }
   }
   
-  return dp[m][n];
+  return matrix[str2.length][str1.length];
 }
 
 function getSuggestions(word, limit = 5) {
@@ -203,195 +132,117 @@ function getSuggestions(word, limit = 5) {
   
   console.log(`🔍 Getting suggestions for: "${word}" (lowercase: "${wordLower}")`);
 
-  // 1. Enhanced quick wins: Turkish/ASCII swaps + adjacent key checks
-  // 🔄 Bidirectional Turkish-ASCII character mappings
-  const turkishAsciiMap = new Map([
-    // Turkish → ASCII
-    ['ç', 'c'], ['ğ', 'g'], ['ı', 'i'], ['ö', 'o'], ['ş', 's'], ['ü', 'u'],
-    // ASCII → Turkish (common substitutions)
-    ['c', 'ç'], ['g', 'ğ'], ['i', 'ı'], ['o', 'ö'], ['s', 'ş'], ['u', 'ü'],
-    // Handle İ/i distinction
-    ['İ', 'i'], ['I', 'ı'],
-    // Circumflex variants
-    ['â', 'a'], ['î', 'i'], ['û', 'u']
-  ]);
+  // 1. Basit Türkçe karakter değişiklikleri
+  const turkishChars = {
+    'c': ['ç'],
+    'ç': ['c'],
+    'g': ['ğ'],
+    'ğ': ['g'],
+    'i': ['ı', 'İ'],
+    'ı': ['i'],
+    'İ': ['i'],
+    'o': ['ö'],
+    'ö': ['o'],
+    's': ['ş'],
+    'ş': ['s'],
+    'u': ['ü'],
+    'ü': ['u']
+  };
 
-  // Check character swaps
+  // Her karakter için Türkçe alternatiflerini dene
   for (let i = 0; i < wordLower.length; i++) {
     const char = wordLower[i];
+    const alternatives = turkishChars[char] || [];
     
-    // Try Turkish/ASCII variants
-    const alternatives = turkishAsciiMap.get(char);
-    if (alternatives) {
-      // Handle single alternative
-      const variant = wordLower.slice(0, i) + alternatives + wordLower.slice(i + 1);
-      console.log(`  🔄 Trying Turkish/ASCII variant: "${variant}"`);
+    for (const alt of alternatives) {
+      const variant = wordLower.slice(0, i) + alt + wordLower.slice(i + 1);
+      console.log(`  🔄 Trying Turkish variant: "${variant}"`);
       if (isWordValid(variant)) {
         console.log(`  ✅ Found valid variant: "${variant}"`);
         suggestions.add(variant);
       }
     }
-    
-    // Also try multiple Turkish variants for ASCII characters
-    if (['c', 'g', 'i', 'o', 's', 'u'].includes(char)) {
-      const turkishVariants = {
-        'c': ['ç'],
-        'g': ['ğ'], 
-        'i': ['ı', 'İ'],
-        'o': ['ö'],
-        's': ['ş'],
-        'u': ['ü']
-      };
-      
-      for (const turkishChar of turkishVariants[char] || []) {
-        const variant = wordLower.slice(0, i) + turkishChar + wordLower.slice(i + 1);
-        console.log(`  🔄 Trying Turkish variant: "${variant}"`);
-        if (isWordValid(variant)) {
-          console.log(`  ✅ Found valid Turkish variant: "${variant}"`);
-          suggestions.add(variant);
-        }
-      }
-    }
-    
-    // Check adjacent key substitutions (common typos)
-    const adjacentKeys = getAdjacentKeys(char);
-    for (const adjKey of adjacentKeys) {
-      const variant = wordLower.slice(0, i) + adjKey + wordLower.slice(i + 1);
-      console.log(`  🔄 Trying adjacent key variant: "${variant}"`);
-      if (isWordValid(variant)) {
-        console.log(`  ✅ Found valid adjacent key variant: "${variant}"`);
-        suggestions.add(variant);
-      }
-    }
   }
 
-  if (suggestions.size >= limit) {
-    console.log(`  🎯 Quick wins found ${suggestions.size} suggestions, returning early`);
-    return Array.from(suggestions).slice(0, limit);
-  }
+  // 2. Basit edit distance ile benzer kelimeleri bul
+  const similarWords = findSimilarWords(wordLower, limit * 3);
+  console.log(`  📊 Found ${similarWords.length} similar words`);
   
-  console.log(`  📊 Quick wins found ${suggestions.size} suggestions, continuing with database search`);
-
-  // 2. FTS5 search or fallback to LIKE queries
-  if (!suggestionsStmt) {
-    console.log(`  ❌ No suggestions statement available`);
-    return Array.from(suggestions);
-  }
-  
-  let candidates = [];
-  
-  try {
-    // Try FTS5 search with normalized query for better Turkish matching
-    const normalizedWord = normalizeTurkish(wordLower);
-    const ftsQuery = `"${wordLower}"* OR ${wordLower}* OR "${normalizedWord}"* OR ${normalizedWord}*`;
-    console.log(`  🔍 FTS5 query: "${ftsQuery}"`);
-    console.log(`  🔍 Normalized word: "${normalizedWord}"`);
-    
-    suggestionsStmt.bind([ftsQuery, limit * 10]); // Get more candidates for ranking
-    
-    while(suggestionsStmt.step()){
-      const row = suggestionsStmt.getAsObject();
-      candidates.push(row.madde);
-    }
-    suggestionsStmt.reset();
-    console.log(`  📊 FTS5 found ${candidates.length} candidates`);
-  } catch (error) {
-    console.log(`  ⚠️ FTS5 failed, falling back to LIKE queries: ${error.message}`);
-    // Fallback to LIKE queries if FTS5 fails
-    const prefixLen = Math.min(word.length, 3);
-    const likePattern = wordLower.substring(0, prefixLen) + '%';
-    const minLen = Math.max(1, word.length - 2);
-    const maxLen = word.length + 2;
-
-    console.log(`  🔍 LIKE pattern: "${likePattern}" (length: ${minLen}-${maxLen})`);
-    suggestionsStmt.bind([minLen, maxLen, likePattern]);
-    
-    while(suggestionsStmt.step()){
-      candidates.push(suggestionsStmt.getAsObject().madde);
-    }
-    suggestionsStmt.reset();
-    console.log(`  📊 LIKE query found ${candidates.length} candidates`);
-  }
-
-  // 3. Rank candidates using keyboard-aware edit distance
-  
-  // 🇹🇷 Comprehensive Turkish diacritic normalization
-  function normalizeTurkish(str) {
-    if (!str) return '';
-    
-    return str
-      .toLowerCase()
-      // Turkish to ASCII mappings
-      .replace(/ç/g, 'c')
-      .replace(/ğ/g, 'g') 
-      .replace(/ı/g, 'i')
-      .replace(/İ/g, 'i')  // Capital İ to i
-      .replace(/ö/g, 'o')
-      .replace(/ş/g, 's')
-      .replace(/ü/g, 'u')
-      // Handle edge cases and variations
-      .replace(/â/g, 'a')  // Circumflex a
-      .replace(/î/g, 'i')  // Circumflex i  
-      .replace(/û/g, 'u')  // Circumflex u
-      // Remove any remaining diacritics (for borrowed words)
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')  // Remove combining diacritical marks
-      .normalize('NFC');
-  }
-  
-  console.log(`  📊 Total candidates before ranking: ${candidates.length}`);
-  
-  const normTarget = normalizeTurkish(wordLower);
-  
-  // Enhanced ranking: keyboard-aware edit distance + length similarity
-  candidates.sort((a, b) => {
-    const normA = normalizeTurkish(a);
-    const normB = normalizeTurkish(b);
-    const distA = keyboardAwareEditDistance(normTarget, normA);
-    const distB = keyboardAwareEditDistance(normTarget, normB);
-    
-    // Primary sort by keyboard-aware edit distance
-    if (distA !== distB) return distA - distB;
-    
-    // Secondary sort by length similarity (prefer similar lengths)
-    const lenDiffA = Math.abs(a.length - wordLower.length);
-    const lenDiffB = Math.abs(b.length - wordLower.length);
-    if (lenDiffA !== lenDiffB) return lenDiffA - lenDiffB;
-    
-    // Tertiary sort by alphabetical order for consistency
-    return a.localeCompare(b, 'tr');
-  });
-  
-  console.log(`  🏆 Top 5 ranked candidates:`, candidates.slice(0, 5));
-  
-  for (const cand of candidates) {
+  for (const similar of similarWords) {
     if (suggestions.size >= limit) break;
-    suggestions.add(cand);
+    suggestions.add(similar);
   }
-  
+
   const finalSuggestions = Array.from(suggestions);
   console.log(`  🎯 Final suggestions for "${word}":`, finalSuggestions);
   return finalSuggestions;
 }
 
-// Get keys adjacent to a given key on QWERTY layout
-function getAdjacentKeys(char) {
-  const pos = QWERTY_LAYOUT[char.toLowerCase()];
-  if (!pos) return [];
+
+
+// Benzer kelimeleri bul
+function findSimilarWords(target, maxResults = 15) {
+  const candidates = [];
+  const targetLen = target.length;
   
-  const adjacent = [];
-  const [x, y] = pos;
-  
-  // Check all positions within distance 1.5 (immediate neighbors)
-  for (const [key, [kx, ky]] of Object.entries(QWERTY_LAYOUT)) {
-    const distance = Math.sqrt((x - kx) ** 2 + (y - ky) ** 2);
-    if (distance > 0 && distance <= 1.5) { // Adjacent but not same key
-      adjacent.push(key);
+  try {
+    // Uzunluk olarak benzer kelimeleri bul (target ± 2 karakter)
+    const minLen = Math.max(2, targetLen - 2);
+    const maxLen = targetLen + 2;
+    
+    console.log(`  🔍 Searching for words with length ${minLen}-${maxLen}`);
+    
+    // Basit LIKE sorgusu kullan
+    const stmt = db.prepare(`
+      SELECT madde FROM madde 
+      WHERE length(madde) BETWEEN ? AND ? 
+      AND lower(madde) LIKE ? 
+      LIMIT ?
+    `);
+    
+    // Farklı prefix'ler dene
+    const prefixes = [
+      target.substring(0, Math.min(3, target.length)) + '%',
+      target.substring(0, Math.min(2, target.length)) + '%',
+      '%' + target.substring(0, Math.min(2, target.length)) + '%'
+    ];
+    
+    for (const prefix of prefixes) {
+      console.log(`  🔍 Trying prefix: "${prefix}"`);
+      stmt.bind([minLen, maxLen, prefix, maxResults]);
+      
+      while (stmt.step()) {
+        const word = stmt.getAsObject().madde;
+        if (word && word.length > 1) {
+          candidates.push(word);
+        }
+      }
+      stmt.reset();
     }
+    
+    stmt.free();
+    
+    console.log(`  📊 Found ${candidates.length} candidates with LIKE queries`);
+    
+    // Edit distance ile sırala
+    const scored = candidates.map(word => ({
+      word: word,
+      distance: simpleEditDistance(target, word.toLowerCase())
+    }));
+    
+    scored.sort((a, b) => a.distance - b.distance);
+    
+    console.log(`  🏆 Top 5 by edit distance:`, scored.slice(0, 5).map(s => `${s.word}(${s.distance})`));
+    
+    return scored.slice(0, maxResults).map(s => s.word);
+    
+  } catch (error) {
+    console.error(`  ❌ Error in findSimilarWords:`, error);
+    return [];
   }
-  
-  return adjacent;
 }
+
+
 
 function checkText(text) {
   const regex = /\b[\wçğıöşüÇĞİÖŞÜ]+\b/g;
