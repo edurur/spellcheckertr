@@ -1,77 +1,51 @@
-// spellchecker-worker.js – brand-new implementation using BK-tree
+// spellchecker-worker.js – Norvig's Algorithm implementation
 
 importScripts('sql-wasm.js');
 
-// ----------------------- BK-tree implementation ---------------------------
-function levenshtein(a, b) {
-  if (a === b) return 0;
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
-
-  const v0 = new Array(b.length + 1);
-  const v1 = new Array(b.length + 1);
-
-  for (let i = 0; i < v0.length; i++) v0[i] = i;
-
-  for (let i = 0; i < a.length; i++) {
-    v1[0] = i + 1;
-    for (let j = 0; j < b.length; j++) {
-      const cost = a[i] === b[j] ? 0 : 1;
-      v1[j + 1] = Math.min(
-        v1[j] + 1,          // insertion
-        v0[j + 1] + 1,      // deletion
-        v0[j] + cost        // substitution
-      );
-    }
-    for (let j = 0; j < v0.length; j++) v0[j] = v1[j];
+// ----------------------- Norvig's Algorithm ---------------------------
+function edits1(word) {
+  const letters = 'abcçdefgğhıijklmnoöprsştuüvyz';
+  const splits = [];
+  for (let i = 0; i <= word.length; i++) {
+    splits.push([word.slice(0, i), word.slice(i)]);
   }
-  return v1[b.length];
-}
-
-class BKNode {
-  constructor(word) {
-    this.word = word;
-    this.children = new Map(); // distance -> BKNode
-  }
-  insert(word) {
-    const dist = levenshtein(word, this.word);
-    if (this.children.has(dist)) {
-      this.children.get(dist).insert(word);
-    } else {
-      this.children.set(dist, new BKNode(word));
-    }
-  }
-  search(target, maxDist, results) {
-    const dist = levenshtein(target, this.word);
-    if (dist <= maxDist) results.push({ word: this.word, dist });
-
-    for (let [childDist, child] of this.children) {
-      if (childDist >= dist - maxDist && childDist <= dist + maxDist) {
-        child.search(target, maxDist, results);
+  
+  const deletes = [];
+  const transposes = [];
+  const replaces = [];
+  const inserts = [];
+  
+  for (const [L, R] of splits) {
+    if (R) deletes.push(L + R.slice(1));
+    if (R.length > 1) transposes.push(L + R[1] + R[0] + R.slice(2));
+    if (R) {
+      for (const c of letters) {
+        replaces.push(L + c + R.slice(1));
       }
     }
+    for (const c of letters) {
+      inserts.push(L + c + R);
+    }
   }
+  
+  return [...new Set([...deletes, ...transposes, ...replaces, ...inserts])];
 }
 
-class BKTree {
-  constructor() { this.root = null; }
-  insert(word) {
-    if (!this.root) this.root = new BKNode(word);
-    else this.root.insert(word);
+function edits2(word) {
+  const edits1List = edits1(word);
+  const edits2List = [];
+  for (const e1 of edits1List) {
+    for (const e2 of edits1(e1)) {
+      edits2List.push(e2);
+    }
   }
-  search(word, maxDist = 2) {
-    if (!this.root) return [];
-    const results = [];
-    this.root.search(word, maxDist, results);
-    results.sort((a, b) => a.dist - b.dist || a.word.localeCompare(b.word, 'tr'));
-    return results.map(r => r.word);
-  }
+  return [...new Set(edits2List)];
 }
 
 // ----------------------- Worker State -------------------------------------
 let db = null;
 let wordSet = new Set();
-let bkTree = new BKTree();
+let wordFreq = new Map(); // word -> frequency
 let personalDict = new Set();
 
 self.onmessage = async (e) => {
@@ -99,19 +73,30 @@ async function initDatabase(buffer, personalWords) {
   const SQL = await initSqlJs({ locateFile: file => file });
   db = new SQL.Database(new Uint8Array(buffer));
 
-  // Fetch all words (unique, lower-case) from dictionary
-  const stmt = db.prepare('SELECT lower(madde) AS w FROM madde');
+  // Load all words with frequency (assuming frequency column exists, default to 1)
+  let stmt;
+  try {
+    // Try to get frequency if available
+    stmt = db.prepare('SELECT lower(madde) AS word, COALESCE(frekans, 1) AS freq FROM madde');
+  } catch (e) {
+    // Fallback to simple word list
+    stmt = db.prepare('SELECT lower(madde) AS word FROM madde');
+  }
+  
   let count = 0;
   while (stmt.step()) {
-    const w = stmt.getAsObject().w;
-    if (!wordSet.has(w)) {
-      wordSet.add(w);
-      bkTree.insert(w);
+    const row = stmt.getAsObject();
+    const word = row.word;
+    const freq = row.freq || 1;
+    
+    if (!wordSet.has(word)) {
+      wordSet.add(word);
+      wordFreq.set(word, freq);
       count++;
     }
   }
   stmt.free();
-  console.log(`BK-tree built with ${count} words.`);
+  console.log(`Dictionary loaded with ${count} words.`);
 
   // Personal dictionary
   updatePersonalDict(personalWords);
@@ -123,7 +108,7 @@ function updatePersonalDict(words) {
     if (!wordSet.has(lw)) {
       personalDict.add(lw);
       wordSet.add(lw);
-      bkTree.insert(lw);
+      wordFreq.set(lw, 10); // High frequency for personal words
     }
   }
 }
@@ -133,8 +118,40 @@ function isWordValid(word) {
 }
 
 function getSuggestions(word, limit = 5) {
-  const results = bkTree.search(word.toLowerCase(), 2 /*max distance*/);
-  return results.filter(w => w !== word.toLowerCase()).slice(0, limit);
+  const wordLower = word.toLowerCase();
+  
+  // If word is valid, return empty suggestions
+  if (isWordValid(word)) return [];
+  
+  // Get all possible edits
+  const candidates = new Set();
+  
+  // Add edit distance 1 candidates
+  for (const edit of edits1(wordLower)) {
+    if (isWordValid(edit)) {
+      candidates.add(edit);
+    }
+  }
+  
+  // If not enough candidates, add edit distance 2
+  if (candidates.size < limit) {
+    for (const edit of edits2(wordLower)) {
+      if (isWordValid(edit)) {
+        candidates.add(edit);
+      }
+    }
+  }
+  
+  // Convert to array and sort by frequency
+  const suggestions = Array.from(candidates);
+  suggestions.sort((a, b) => {
+    const freqA = wordFreq.get(a) || 0;
+    const freqB = wordFreq.get(b) || 0;
+    if (freqB !== freqA) return freqB - freqA; // Higher frequency first
+    return a.localeCompare(b, 'tr'); // Then alphabetical
+  });
+  
+  return suggestions.slice(0, limit);
 }
 
 function checkText(text) {
